@@ -1,0 +1,30 @@
+# 雲端硬碟系統檔
+desktop.ini
+*.tmp
+~$*
+.DS_Store
+
+# 機密資料
+.env
+.env.*
+*.key
+*.pem
+credentials.*
+serviceAccount*.json
+
+# Claude Code 本地設定（含 permissions，可能記錄 token，絕不上雲）
+.claude/
+
+# 相依套件 / 建置產物
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 配體庫實體檔案：體積大且可由 manifest 完整重現，不進 repo
+data/**/*.sdf
+data/**/*.sdf.gz
+data/**/*.csv

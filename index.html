@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ligand-construct — PubChem 配體庫建構器</title>
+<meta name="description" content="依四階段 SOP 從 PubChem 建立可追溯的小分子配體庫：化合物定位、Tanimoto 相似度篩選、SDF 導出、命名歸檔。">
+<style>
+  :root{
+    --bg:#f7f8fa; --panel:#ffffff; --ink:#15181d; --muted:#5d6672;
+    --line:#e2e6ec; --accent:#0d7a6f; --accent-soft:#e6f4f1;
+    --warn:#9a5b00; --warn-soft:#fdf3e3; --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#14171c; --panel:#1c2026; --ink:#e8ebef; --muted:#9aa4b1;
+          --line:#2c323a; --accent:#4fd1c0; --accent-soft:#17302d;
+          --warn:#f0b76a; --warn-soft:#2e2517;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif;
+       line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:40px 20px 72px}
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:34px}
+  h1{font-size:1.75rem;margin:0 0 6px;letter-spacing:-.01em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);margin:0;font-size:.95rem}
+  .links{margin-top:14px;font-size:.88rem;display:flex;gap:16px;flex-wrap:wrap}
+  a{color:var(--accent)}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+         padding:22px 24px;margin-bottom:18px}
+  .stage > h2{font-size:1.05rem;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent-soft);
+       color:var(--accent);font-size:.82rem;font-weight:700;display:grid;place-items:center}
+  .hint{color:var(--muted);font-size:.86rem;margin:0 0 16px 36px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type=text]{flex:1 1 220px;min-width:0;padding:9px 12px;border:1px solid var(--line);
+       border-radius:8px;background:var(--bg);color:var(--ink);font-size:.95rem}
+  input[type=text]:focus-visible,button:focus-visible,input[type=range]:focus-visible{
+       outline:2px solid var(--accent);outline-offset:2px}
+  button{padding:9px 18px;border:0;border-radius:8px;background:var(--accent);color:#fff;
+       font-size:.92rem;font-weight:600;cursor:pointer;font-family:inherit}
+  button:hover:not(:disabled){filter:brightness(1.08)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  input[type=range]{flex:1 1 200px;accent-color:var(--accent)}
+  .thr{font-family:var(--mono);font-size:1.3rem;font-weight:700;color:var(--accent);
+       min-width:62px;text-align:right}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg label{padding:8px 16px;font-size:.9rem;cursor:pointer;background:var(--panel)}
+  .seg label:has(input:checked){background:var(--accent);color:#fff;font-weight:600}
+  .seg input{position:absolute;opacity:0;pointer-events:none}
+  .out{margin-top:16px;font-size:.9rem}
+  .out:empty{display:none}
+  table{width:100%;border-collapse:collapse;font-size:.88rem;margin:6px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;white-space:nowrap;width:9.5rem}
+  td{font-family:var(--mono);font-size:.84rem;word-break:break-all}
+  .big{font-size:1.9rem;font-weight:700;color:var(--accent);font-family:var(--mono);line-height:1.2}
+  .big small{display:block;font-size:.8rem;color:var(--muted);font-weight:400;font-family:inherit}
+  code{font-family:var(--mono);font-size:.84rem;background:var(--accent-soft);
+       padding:2px 6px;border-radius:4px}
+  pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+      overflow-x:auto;font-family:var(--mono);font-size:.82rem;margin:10px 0 0}
+  .note{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;
+        font-size:.86rem;margin-top:12px}
+  .err{color:#c0392b;font-size:.88rem;margin-top:12px}
+  .pend{color:var(--muted);font-size:.88rem}
+  .locked{opacity:.45;pointer-events:none}
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:.84rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>ligand-construct — <span>PubChem 配體庫建構器</span></h1>
+  <p class="sub">依四階段 SOP 建立可追溯的小分子配體庫。本頁直接呼叫 PubChem PUG-REST，資料不經任何第三方伺服器。</p>
+  <div class="links">
+    <a href="https://github.com/jong-liu/ligand-construct">GitHub repo</a>
+    <a href="docs/pubchem-ligand-SOP.md">完整 SOP 文件</a>
+    <a href="tools/pubchem-fetch/">CLI 工具（批次用）</a>
+  </div>
+</header>
+
+<!-- 階段 1 -->
+<section class="stage">
+  <h2><span class="num">1</span>目標化合物定位</h2>
+  <p class="hint">輸入化合物名稱或 PubChem CID，核對分子式、分子量與 InChIKey 無誤後再往下。</p>
+  <div class="row">
+    <input type="text" id="q" value="paxlovid" placeholder="化合物名稱或 CID，例 paxlovid / 155903259"
+           aria-label="化合物名稱或 CID">
+    <button id="btn1">定位化合物</button>
+  </div>
+  <div class="out" id="out1"></div>
+</section>
+
+<!-- 階段 2 -->
+<section class="stage locked" id="s2" aria-disabled="true">
+  <h2><span class="num">2</span>Tanimoto 相似度篩選</h2>
+  <p class="hint">PubChem Fingerprint + Tanimoto 2D 相似度。網頁預設門檻 90%；要高特異性配體庫建議拉到 95%。</p>
+  <div class="row">
+    <input type="range" id="thr" min="70" max="100" step="1" value="95" aria-label="Tanimoto 門檻">
+    <span class="thr" id="thrVal">95%</span>
+    <button id="btn2">搜尋相似結構</button>
+    <button id="btn2b" class="ghost">掃描多個門檻</button>
+  </div>
+  <div class="out" id="out2"></div>
+</section>
+
+<!-- 階段 3 -->
+<section class="stage locked" id="s3" aria-disabled="true">
+  <h2><span class="num">3</span>結構檔（SDF）導出</h2>
+  <p class="hint">2D 座標供指紋比對；3D 座標供分子對接（每化合物 1 個 conformer，部分化合物無 3D 構型）。</p>
+  <div class="row">
+    <div class="seg" role="radiogroup" aria-label="座標維度">
+      <label><input type="radio" name="coord" value="2d" checked>2D 座標</label>
+      <label><input type="radio" name="coord" value="3d">3D 座標</label>
+    </div>
+    <button id="btn3">下載 SDF</button>
+  </div>
+  <div class="out" id="out3"></div>
+</section>
+
+<!-- 階段 4 -->
+<section class="stage locked" id="s4" aria-disabled="true">
+  <h2><span class="num">4</span>命名歸檔與可追溯性</h2>
+  <p class="hint">檔名採 <code>&lt;母核&gt;_like&lt;門檻&gt;.sdf</code>，一眼看出來源與篩選條件，不會在多批次處理中混淆。</p>
+  <div class="out" id="out4"></div>
+</section>
+
+<footer>
+  資料來源：<a href="https://pubchem.ncbi.nlm.nih.gov/">NCBI PubChem</a>（PUG-REST）。
+  大批次下載（數百筆以上）請改用 CLI：<code>python tools/pubchem-fetch/pubchem_fetch.py --name paxlovid --threshold 95</code>，
+  它會一併產出屬性表與 manifest。
+</footer>
+</div>
+
+<script>
+const API = "https://pubchem.ncbi.nlm.nih.gov/rest/pug";
+const PROPS = "Title,MolecularFormula,MolecularWeight,SMILES,InChIKey,XLogP,TPSA,HBondDonorCount,HBondAcceptorCount,RotatableBondCount";
+const LABELS = {Title:"化合物名稱", MolecularFormula:"分子式", MolecularWeight:"分子量 (g/mol)",
+  SMILES:"SMILES", InChIKey:"InChIKey", XLogP:"XLogP", TPSA:"TPSA (Å²)",
+  HBondDonorCount:"氫鍵供體數", HBondAcceptorCount:"氫鍵受體數", RotatableBondCount:"可旋轉鍵數"};
+
+const el = id => document.getElementById(id);
+const state = {cid:null, label:"", hits:[], threshold:95};
+// PUG-REST 限制每秒 5 次請求，連續查詢間自己節流
+let lastCall = 0;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function api(path, body){
+  const gap = 250 - (Date.now() - lastCall);
+  if (gap > 0) await new Promise(r => setTimeout(r, gap));
+  lastCall = Date.now();
+  const opt = body
+    ? {method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body}
+    : {};
+  const res = await fetch(`${API}/${path}`, opt);
+  if (!res.ok){
+    const txt = await res.text();
+    const msg = (txt.match(/Message:\s*(.+)/) || [,`HTTP ${res.status}`])[1];
+    throw new Error(msg.trim());
+  }
+  return res;
+}
+
+function slugify(t){
+  return (t||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "library";
+}
+function unlock(id){ const s = el(id); s.classList.remove("locked"); s.removeAttribute("aria-disabled"); }
+function lock(id){ const s = el(id); s.classList.add("locked"); s.setAttribute("aria-disabled","true"); el(id.replace("s","out")).innerHTML = ""; }
+
+/* 把 PubChem 的 CSV 屬性表解析成物件（欄位值可能含引號與逗號） */
+function parseCsvRow(csv){
+  const [head, line] = csv.trim().split(/\r?\n/);
+  const cut = s => s.match(/("([^"]|"")*"|[^,]*)(,|$)/g).slice(0,-1)
+                    .map(f => f.replace(/,$/,"").replace(/^"|"$/g,"").replace(/""/g,'"'));
+  const keys = cut(head), vals = cut(line);
+  return Object.fromEntries(keys.map((k,i) => [k, vals[i]]));
+}
+
+/* ── 階段 1 ── */
+el("btn1").onclick = async () => {
+  const q = el("q").value.trim();
+  if (!q) return;
+  const btn = el("btn1"), out = el("out1");
+  btn.disabled = true; out.innerHTML = '<p class="pend">查詢中…</p>';
+  lock("s2"); lock("s3"); lock("s4");
+  try{
+    let cid;
+    if (/^\d+$/.test(q)){
+      cid = Number(q);
+    } else {
+      const r = await (await api(`compound/name/${encodeURIComponent(q)}/cids/JSON`)).json();
+      cid = r.IdentifierList.CID[0];
+    }
+    const row = parseCsvRow(await (await api(`compound/cid/${cid}/property/${PROPS}/CSV`)).text());
+    state.cid = cid;
+    state.label = slugify(/^\d+$/.test(q) ? (row.Title || `cid${cid}`) : q);
+    out.innerHTML = `<table><tbody>
+      <tr><th>PubChem CID</th><td><a href="https://pubchem.ncbi.nlm.nih.gov/compound/${cid}" target="_blank" rel="noopener">${cid}</a></td></tr>
+      ${Object.keys(LABELS).filter(k => row[k]).map(k =>
+        `<tr><th>${LABELS[k]}</th><td>${esc(row[k])}</td></tr>`).join("")}
+    </tbody></table>`;
+    unlock("s2"); refreshStage4();
+  }catch(e){
+    out.innerHTML = `<p class="err">❌ 查不到「${esc(q)}」：${esc(e.message)}</p>`;
+  }finally{ btn.disabled = false; }
+};
+el("q").addEventListener("keydown", e => { if (e.key === "Enter") el("btn1").click(); });
+
+/* ── 階段 2 ── */
+el("thr").oninput = e => {
+  state.threshold = Number(e.target.value);
+  el("thrVal").textContent = state.threshold + "%";
+  refreshStage4();
+};
+
+async function countHits(threshold){
+  const r = await (await api(`compound/fastsimilarity_2d/cid/${state.cid}/cids/JSON?Threshold=${threshold}`)).json();
+  return r.IdentifierList.CID;
+}
+
+el("btn2").onclick = async () => {
+  const btn = el("btn2"), out = el("out2");
+  btn.disabled = true; out.innerHTML = '<p class="pend">搜尋中…</p>';
+  try{
+    state.hits = await countHits(state.threshold);
+    out.innerHTML = `<p class="big">${state.hits.length}<small>Tanimoto ≥ ${state.threshold}% 的命中化合物數（含 query 自身）</small></p>`
+      + (state.hits.length > 500
+        ? '<p class="note">⚠️ 命中數偏多，瀏覽器下載會花不少時間。建議改用 CLI 工具，或把門檻再往上調。</p>' : "");
+    unlock("s3"); refreshStage4();
+  }catch(e){
+    out.innerHTML = `<p class="err">❌ 搜尋失敗：${esc(e.message)}</p>`;
+  }finally{ btn.disabled = false; }
+};
+
+el("btn2b").onclick = async () => {
+  const btn = el("btn2b"), out = el("out2");
+  btn.disabled = true;
+  const list = [85, 90, 95, 99];
+  out.innerHTML = '<p class="pend">依序掃描 85 / 90 / 95 / 99%…</p>';
+  const rows = [];
+  for (const t of list){
+    try{ rows.push([t, (await countHits(t)).length]); }
+    catch{ rows.push([t, "—"]); }
+  }
+  out.innerHTML = `<table><thead><tr><th style="width:auto">Tanimoto 門檻</th><th style="width:auto">命中數</th><th style="width:auto">用途</th></tr></thead><tbody>
+    ${rows.map(([t,n]) => `<tr><td>${t}%</td><td>${n}</td><td style="font-family:inherit">${
+      t >= 99 ? "近乎同構，立體異構物／鹽類" :
+      t >= 95 ? "高嚴格度，高特異性配體庫" :
+      t >= 90 ? "PubChem 預設，初步化學空間探索" : "寬鬆，骨架躍遷探索"}</td></tr>`).join("")}
+  </tbody></table><p class="hint" style="margin-left:0">選定門檻後按「搜尋相似結構」鎖定該批 CID 清單。</p>`;
+  btn.disabled = false;
+};
+
+/* ── 階段 3 ── */
+el("btn3").onclick = async () => {
+  const btn = el("btn3"), out = el("out3");
+  const coord = document.querySelector('input[name=coord]:checked').value;
+  const fname = `${state.label}_like${state.threshold}${coord === "3d" ? "_3d" : ""}.sdf`;
+  btn.disabled = true;
+  out.innerHTML = `<p class="pend">取 ${state.hits.length} 筆 ${coord.toUpperCase()} 結構中，請稍候…</p>`;
+  try{
+    const parts = [];
+    const missing = [];
+    for (let i = 0; i < state.hits.length; i += 100){
+      const chunk = state.hits.slice(i, i + 100);
+      const path = "compound/cid/SDF" + (coord === "3d" ? "?record_type=3d" : "");
+      try{
+        parts.push(await (await api(path, "cid=" + chunk.join(","))).text());
+      }catch{
+        // 3D 構型並非人人有，整批失敗就逐一抓，挑出真正缺的
+        for (const cid of chunk){
+          try{ parts.push(await (await api(path, "cid=" + cid)).text()); }
+          catch{ missing.push(cid); }
+        }
+      }
+    }
+    const blob = new Blob(parts, {type:"chemical/x-mdl-sdfile"});
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {href:url, download:fname});
+    a.click(); URL.revokeObjectURL(url);
+    const got = state.hits.length - missing.length;
+    out.innerHTML = `<p>✅ 已下載 <code>${esc(fname)}</code>（${got} 筆化合物，${(blob.size/1024).toFixed(0)} KB）</p>`
+      + (missing.length ? `<p class="note">⚠️ ${missing.length} 筆無 3D 構型已略過：${missing.slice(0,12).join(", ")}${missing.length>12?" …":""}</p>` : "");
+    unlock("s4"); refreshStage4();
+  }catch(e){
+    out.innerHTML = `<p class="err">❌ 下載失敗：${esc(e.message)}</p>`;
+  }finally{ btn.disabled = false; }
+};
+
+/* ── 階段 4 ── */
+function refreshStage4(){
+  if (!state.cid) return;
+  const coord = document.querySelector('input[name=coord]:checked').value;
+  const fname = `${state.label}_like${state.threshold}${coord === "3d" ? "_3d" : ""}.sdf`;
+  el("out4").innerHTML = `<table><tbody>
+    <tr><th>建議檔名</th><td>${esc(fname)}</td></tr>
+    <tr><th>母核標籤</th><td>${esc(state.label)}（CID ${state.cid}）</td></tr>
+    <tr><th>篩選門檻</th><td>Tanimoto ${state.threshold}%</td></tr>
+    <tr><th>座標維度</th><td>${coord.toUpperCase()}</td></tr>
+  </tbody></table>
+  <p class="hint" style="margin-left:0">要連屬性表與 manifest（完整 CID 清單＋查詢條件，供日後重現）一起產出，跑這行：</p>
+  <pre>python tools/pubchem-fetch/pubchem_fetch.py --cid ${state.cid} --threshold ${state.threshold} --coord ${coord}</pre>`;
+  if (el("out3").innerHTML) unlock("s4");
+}
+document.querySelectorAll('input[name=coord]').forEach(r => r.onchange = refreshStage4);
+</script>
+</body>
+</html>
